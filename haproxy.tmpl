@@ -48,9 +48,6 @@ backend application-backend
     {{ if eq $addrLen 1 }}
         {{ with $address := index $value.Addresses 0 }}
 backend {{ $path_name }}
-        {{ if $value.Env.REQREP }}
-   reqrep {{ $value.Env.REQREP }}
-        {{ end }}
    redirect scheme https if !{ ssl_fc }
    server {{ $value.Name }} {{ $address.IP }}:{{ $address.Port }} check
 
@@ -61,9 +58,6 @@ backend {{ $path_name }}
         {{ range $i, $address := $value.Addresses }}
            {{ if eq $address.Port $value.Env.VIRTUAL_PORT }}
 backend {{ $path_name }}
-        {{ if $value.Env.REQREP }}
-   reqrep {{ $value.Env.REQREP }}
-        {{ end }}
    redirect scheme https if !{ ssl_fc }
    server {{ $value.Name }} {{ $address.IP }}:{{ $address.Port }} check
            {{ end }}
@@ -74,9 +68,6 @@ backend {{ $path_name }}
         {{ range $i, $address := $value.Addresses }}
             {{ if eq $address.Port "80" }}
 backend {{ $path_name }}
-        {{ if $value.Env.REQREP }}
-   reqrep {{ $value.Env.REQREP }}
-        {{ end }}
    redirect scheme https if !{ ssl_fc }
    server {{ $value.Name }} {{ $address.IP }}:{{ $address.Port }} check
             {{ end }}
