@@ -1,0 +1,87 @@
+global
+    log 127.0.0.1    local0
+    log 127.0.0.1    local1 notice
+    tune.ssl.default-dh-param 2048
+    maxconn 4096
+    user root
+    group root
+    daemon
+
+defaults
+    log    global
+    mode    http
+    option    httplog
+    option    dontlognull
+    option forwardfor
+    option http-server-close
+    stats enable
+     stats auth someuser:somepassword
+     stats uri /haproxyStats
+
+frontend http-in
+    bind *:80
+    reqadd X-Forwarded-Proto:\ http
+    default_backend application-backend
+
+frontend https-in
+    bind *:443 ssl crt /sslcerts/server.pem
+    reqadd X-Forwarded-Proto:\ https
+
+    {{ range $path_name, $containers := groupByMulti $ "Env.PATH_NAME" "," }}
+    {{ range $index, $value := $containers }}
+    acl {{ $path_name }}_acl path_beg -i /{{ $path_name }}
+    use_backend {{ $path_name }} if {{ $path_name }}_acl
+    {{ end }}
+    {{ end }}
+
+    default_backend application-backend
+
+backend application-backend
+   redirect scheme https if !{ ssl_fc }
+   server www-1 datadoghq.com:80 check
+
+{{ range $path_name, $containers := groupByMulti $ "Env.PATH_NAME" "," }}
+{{ range $index, $value := $containers }}
+
+    {{ $addrLen := len $value.Addresses }}
+    {{/* If only 1 port exposed, use that */}}
+    {{ if eq $addrLen 1 }}
+        {{ with $address := index $value.Addresses 0 }}
+backend {{ $path_name }}
+        {{ if $value.Env.REQREP }}
+   reqrep {{ $value.Env.REQREP }}
+        {{ end }}
+   redirect scheme https if !{ ssl_fc }
+   server {{ $value.Name }} {{ $address.IP }}:{{ $address.Port }} check
+
+        {{ end }}
+
+    {{/* If more than one port exposed, use the one matching VIRTUAL_PORT env var */}}
+    {{ else if $value.Env.VIRTUAL_PORT }}
+        {{ range $i, $address := $value.Addresses }}
+           {{ if eq $address.Port $value.Env.VIRTUAL_PORT }}
+backend {{ $path_name }}
+        {{ if $value.Env.REQREP }}
+   reqrep {{ $value.Env.REQREP }}
+        {{ end }}
+   redirect scheme https if !{ ssl_fc }
+   server {{ $value.Name }} {{ $address.IP }}:{{ $address.Port }} check
+           {{ end }}
+        {{ end }}
+
+    {{/* Else default to standard web port 80 */}}
+    {{ else }}
+        {{ range $i, $address := $value.Addresses }}
+            {{ if eq $address.Port "80" }}
+backend {{ $path_name }}
+        {{ if $value.Env.REQREP }}
+   reqrep {{ $value.Env.REQREP }}
+        {{ end }}
+   redirect scheme https if !{ ssl_fc }
+   server {{ $value.Name }} {{ $address.IP }}:{{ $address.Port }} check
+            {{ end }}
+        {{ end }}
+    {{ end }}
+{{ end }}
+
+{{ end }}
